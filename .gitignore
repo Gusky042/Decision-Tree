@@ -1,0 +1,16 @@
+# Model files
+*.pkl
+*.joblib
+saved_models/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Data files
+*.csv
+*.xlsx
+
+# IDE files
+.vscode/
+.idea/ 
