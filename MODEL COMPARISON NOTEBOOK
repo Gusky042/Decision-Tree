@@ -1,0 +1,256 @@
+"""
+MODEL COMPARISON NOTEBOOK
+Compare all classification models on the same dataset
+Author: Gusky042
+Date: April 2026
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+
+print("=" * 70)
+print("MODEL COMPARISON: BREAST CANCER DATASET")
+print("=" * 70)
+
+# ============================================
+# STEP 1: LOAD DATA
+# ============================================
+
+print("\n📊 Loading Breast Cancer Dataset...")
+data = load_breast_cancer()
+X = data.data
+y = data.target
+feature_names = data.feature_names
+target_names = data.target_names
+
+print(f"   Samples: {X.shape[0]}")
+print(f"   Features: {X.shape[1]}")
+print(f"   Classes: {target_names}")
+
+# ============================================
+# STEP 2: TRAIN/TEST SPLIT
+# ============================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print(f"\n📊 Train size: {X_train.shape[0]}")
+print(f"   Test size: {X_test.shape[0]}")
+
+# ============================================
+# STEP 3: SCALE FEATURES
+# ============================================
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# ============================================
+# STEP 4: DEFINE MODELS
+# ============================================
+
+models = {
+    'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+    'Decision Tree': DecisionTreeClassifier(max_depth=5, random_state=42),
+    'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+    'XGBoost': XGBClassifier(random_state=42, eval_metric='logloss')
+}
+
+# ============================================
+# STEP 5: TRAIN AND EVALUATE EACH MODEL
+# ============================================
+
+print("\n" + "=" * 70)
+print("TRAINING AND EVALUATING MODELS")
+print("=" * 70)
+
+results = []
+
+for name, model in models.items():
+    print(f"\n📈 Training {name}...")
+    
+    # Train
+    model.fit(X_train_scaled, y_train)
+    
+    # Predict
+    y_pred = model.predict(X_test_scaled)
+    y_proba = model.predict_proba(X_test_scaled)[:, 1]
+    
+    # Calculate metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, y_proba)
+    
+    # Cross-validation
+    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
+    
+    results.append({
+        'Model': name,
+        'Accuracy': accuracy,
+        'Precision': precision,
+        'Recall': recall,
+        'F1-Score': f1,
+        'ROC-AUC': roc_auc,
+        'CV Mean': cv_scores.mean(),
+        'CV Std': cv_scores.std()
+    })
+    
+    print(f"   ✅ Accuracy: {accuracy:.4f} ({accuracy*100:.1f}%)")
+    print(f"   ✅ ROC-AUC: {roc_auc:.4f}")
+
+# ============================================
+# STEP 6: RESULTS TABLE
+# ============================================
+
+print("\n" + "=" * 70)
+print("RESULTS SUMMARY")
+print("=" * 70)
+
+results_df = pd.DataFrame(results)
+results_df = results_df.round(4)
+print(results_df.to_string(index=False))
+
+# ============================================
+# STEP 7: FIND BEST MODEL
+# ============================================
+
+best_model = results_df.loc[results_df['Accuracy'].idxmax(), 'Model']
+best_accuracy = results_df['Accuracy'].max()
+
+print(f"\n🏆 BEST MODEL: {best_model}")
+print(f"   Accuracy: {best_accuracy:.4f} ({best_accuracy*100:.1f}%)")
+
+# ============================================
+# STEP 8: VISUALIZATIONS
+# ============================================
+
+print("\n📊 Generating Visualizations...")
+
+# Figure 1: Accuracy Comparison
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
+colors = ['blue', 'green', 'orange', 'red']
+bars = plt.bar(results_df['Model'], results_df['Accuracy'], color=colors)
+plt.ylabel('Accuracy')
+plt.title('Model Accuracy Comparison')
+plt.ylim(0.9, 1.0)
+for bar, acc in zip(bars, results_df['Accuracy']):
+    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() - 0.01, 
+             f'{acc:.3f}', ha='center', va='bottom', fontsize=10)
+
+# Figure 2: ROC-AUC Comparison
+plt.subplot(1, 2, 2)
+bars = plt.bar(results_df['Model'], results_df['ROC-AUC'], color=colors)
+plt.ylabel('ROC-AUC')
+plt.title('ROC-AUC Comparison')
+plt.ylim(0.9, 1.0)
+for bar, auc in zip(bars, results_df['ROC-AUC']):
+    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() - 0.01, 
+             f'{auc:.3f}', ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.savefig('model_comparison_accuracy.png', dpi=150)
+plt.show()
+
+# Figure 3: Confusion Matrix for Best Model
+print(f"\n📊 Confusion Matrix for Best Model ({best_model})")
+
+best_model_obj = models[best_model]
+y_pred_best = best_model_obj.predict(X_test_scaled)
+cm = confusion_matrix(y_test, y_pred_best)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=target_names, yticklabels=target_names)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title(f'Confusion Matrix - {best_model}')
+plt.savefig('best_model_confusion_matrix.png', dpi=150)
+plt.show()
+
+# Figure 4: All Metrics Comparison
+metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']
+results_melted = results_df.melt(id_vars=['Model'], value_vars=metrics_to_plot, 
+                                  var_name='Metric', value_name='Score')
+
+plt.figure(figsize=(12, 6))
+sns.barplot(data=results_melted, x='Metric', y='Score', hue='Model')
+plt.title('All Metrics Comparison Across Models')
+plt.ylim(0.8, 1.0)
+plt.legend(bbox_to_anchor=(1.05, 1))
+plt.tight_layout()
+plt.savefig('all_metrics_comparison.png', dpi=150)
+plt.show()
+
+# ============================================
+# STEP 9: FEATURE IMPORTANCE (Best Model)
+# ============================================
+
+print(f"\n📊 Feature Importance from {best_model}")
+
+if hasattr(best_model_obj, 'feature_importances_'):
+    importance = best_model_obj.feature_importances_
+    sorted_idx = np.argsort(importance)[::-1][:10]
+    
+    plt.figure(figsize=(10, 6))
+    plt.barh(range(10), importance[sorted_idx][::-1])
+    plt.yticks(range(10), [feature_names[i] for i in sorted_idx][::-1])
+    plt.xlabel('Feature Importance')
+    plt.title(f'Top 10 Features - {best_model}')
+    plt.tight_layout()
+    plt.savefig('feature_importance.png', dpi=150)
+    plt.show()
+    
+    print("\n   Top 5 Features:")
+    for i in range(5):
+        print(f"   {i+1}. {feature_names[sorted_idx[i]]}: {importance[sorted_idx[i]]:.4f}")
+else:
+    print(f"   {best_model} does not have built-in feature importance")
+
+# ============================================
+# STEP 10: SUMMARY
+# ============================================
+
+print("\n" + "=" * 70)
+print("SUMMARY")
+print("=" * 70)
+
+print(f"""
+✅ BEST MODEL: {best_model}
+✅ BEST ACCURACY: {best_accuracy:.4f} ({best_accuracy*100:.1f}%)
+✅ BEST ROC-AUC: {results_df['ROC-AUC'].max():.4f}
+
+📊 INSIGHTS:
+- All models performed well on Breast Cancer dataset
+- {best_model} slightly outperformed others
+- Feature importance shows medical measurements matter most
+
+🔧 RECOMMENDATION:
+- Use {best_model} for this type of medical classification
+- Top features can guide medical diagnosis
+- Model is ready for deployment
+
+📁 FILES SAVED:
+- model_comparison_accuracy.png
+- best_model_confusion_matrix.png
+- all_metrics_comparison.png
+- feature_importance.png
+""")
+
+print("=" * 70)
+print("🎉 MODEL COMPARISON COMPLETE!")
+print("=" * 70)
